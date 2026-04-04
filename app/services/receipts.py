@@ -20,6 +20,7 @@ from app.schemas.receipts import (
     ReceiptDetailItemResponse,
     ReceiptDetailResponse,
     ReceiptListItemResponse,
+    UpdateReceiptResponse,
 )
 from app.services.inventory import normalize_product_name
 
@@ -124,6 +125,143 @@ def confirm_receipt(
 
     return ConfirmReceiptResponse(
         message="Compra registrada e estoque atualizado com sucesso.",
+        receipt_id=receipt.id,
+        items_processed=processed_count,
+    )
+
+
+def _apply_receipt_items(
+    db: Session,
+    current_user: UserResponse,
+    receipt: Receipt,
+    payload: ConfirmReceiptRequest,
+) -> int:
+    processed_count = 0
+    now = datetime.now(UTC)
+
+    for item in payload.items:
+        product_id: UUID | None = None
+        category: str | None = None
+
+        if item.item_type == ItemType.PRODUCT:
+            normalized_name = normalize_product_name(item.product_name)
+            product = db.scalar(select(Product).where(Product.normalized_name == normalized_name))
+            if product is None:
+                inferred_category = infer_product_category(item.product_name)
+                product = Product(
+                    name=item.product_name.strip(),
+                    normalized_name=normalized_name,
+                    category=inferred_category,
+                )
+                db.add(product)
+                db.flush()
+
+            product_id = product.id
+            category = product.category
+
+            inventory_item = db.scalar(
+                select(InventoryItem).where(
+                    InventoryItem.household_id == current_user.household_id,
+                    InventoryItem.product_id == product.id,
+                )
+            )
+            if inventory_item is None:
+                inventory_item = InventoryItem(
+                    household_id=current_user.household_id,
+                    product_id=product.id,
+                    current_qty=item.quantity,
+                    min_qty=Decimal("0"),
+                    updated_at=now,
+                )
+            else:
+                inventory_item.current_qty += item.quantity
+                inventory_item.updated_at = now
+            db.add(inventory_item)
+
+        receipt_item = ReceiptItem(
+            receipt_id=receipt.id,
+            product_id=product_id,
+            name=item.product_name.strip(),
+            category=category,
+            item_type=item.item_type,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            discount_amount=item.discount_amount,
+            total_price=item.total_price,
+        )
+        db.add(receipt_item)
+        processed_count += 1
+
+    return processed_count
+
+
+def _revert_receipt_inventory(
+    db: Session,
+    current_user: UserResponse,
+    receipt_items: list[ReceiptItem],
+) -> None:
+    now = datetime.now(UTC)
+    for item in receipt_items:
+        if item.item_type != ItemType.PRODUCT or item.product_id is None:
+            continue
+
+        inventory_item = db.scalar(
+            select(InventoryItem).where(
+                InventoryItem.household_id == current_user.household_id,
+                InventoryItem.product_id == item.product_id,
+            )
+        )
+        if inventory_item is None or inventory_item.current_qty < item.quantity:
+            raise DomainException.conflict(
+                detail="Nao e possivel editar esta compra porque parte do estoque ja foi consumida.",
+                code="RECEIPT_EDIT_STOCK_CONFLICT",
+            )
+
+        inventory_item.current_qty -= item.quantity
+        inventory_item.updated_at = now
+        db.add(inventory_item)
+
+
+def update_receipt(
+    db: Session,
+    current_user: UserResponse,
+    receipt_id: UUID,
+    payload: ConfirmReceiptRequest,
+) -> UpdateReceiptResponse:
+    receipt = db.scalar(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.household_id == current_user.household_id,
+            Receipt.deleted_at.is_(None),
+        )
+    )
+    if receipt is None:
+        raise DomainException.resource_not_found()
+
+    existing_items = db.scalars(
+        select(ReceiptItem).where(ReceiptItem.receipt_id == receipt.id).order_by(ReceiptItem.id.asc())
+    ).all()
+
+    try:
+        _revert_receipt_inventory(db, current_user, existing_items)
+        for item in existing_items:
+            db.delete(item)
+        db.flush()
+
+        receipt.market_name = payload.market_name.strip()
+        receipt.total_amount = payload.total_amount
+        receipt.receipt_date = payload.receipt_date
+        db.add(receipt)
+
+        processed_count = _apply_receipt_items(db, current_user, receipt, payload)
+        db.commit()
+        db.refresh(receipt)
+    except Exception:
+        db.rollback()
+        raise
+
+    return UpdateReceiptResponse(
+        message="Compra atualizada com sucesso.",
         receipt_id=receipt.id,
         items_processed=processed_count,
     )

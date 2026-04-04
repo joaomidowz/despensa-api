@@ -203,15 +203,31 @@ def update_inventory_item(
     payload: UpdateInventoryItemRequest,
 ) -> InventoryItemResponse:
     item = _get_inventory_in_household(db, current_user.household_id, inventory_id)
+    product = _get_product(db, item.product_id)
+
+    if payload.product_name is not None:
+        normalized_name = normalize_product_name(payload.product_name)
+        existing_product = db.scalar(select(Product).where(Product.normalized_name == normalized_name))
+        if existing_product is not None and existing_product.id != product.id:
+            raise DomainException.conflict(
+                detail="Ja existe outro produto com este nome normalizado.",
+                code="PRODUCT_NAME_CONFLICT",
+            )
+        product.name = payload.product_name.strip()
+        product.normalized_name = normalized_name
+    if payload.category is not None:
+        product.category = payload.category.strip()
+
     if payload.current_qty is not None:
         item.current_qty = payload.current_qty
     if payload.min_qty is not None:
         item.min_qty = payload.min_qty
     item.updated_at = datetime.now(UTC)
     db.add(item)
+    db.add(product)
     db.commit()
     db.refresh(item)
-    product = _get_product(db, item.product_id)
+    db.refresh(product)
     return _serialize(item, product)
 
 

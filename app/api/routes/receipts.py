@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db_session, require_household
 from app.api.responses import (
+    ACCOUNT_CONFLICT_RESPONSE,
     HOUSEHOLD_REQUIRED_RESPONSE,
     PRICE_MISMATCH_RESPONSE,
     RESOURCE_NOT_FOUND_RESPONSE,
@@ -20,11 +21,13 @@ from app.schemas.receipts import (
     ReceiptDetailResponse,
     ReceiptScanRequest,
     ReceiptScanResponse,
+    UpdateReceiptResponse,
 )
 from app.services.receipts import (
     confirm_receipt as confirm_receipt_service,
     get_receipt_detail as get_receipt_detail_service,
     list_receipts as list_receipts_service,
+    update_receipt as update_receipt_service,
 )
 from app.services.gemini_scan import scan_receipt_with_gemini
 
@@ -65,6 +68,27 @@ def confirm_receipt(
     db: Session = Depends(get_db_session),
 ) -> ConfirmReceiptResponse:
     return confirm_receipt_service(db, current_user, payload)
+
+
+@router.put(
+    "/{receipt_id}",
+    response_model=UpdateReceiptResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: UNAUTHORIZED_RESPONSE,
+        403: HOUSEHOLD_REQUIRED_RESPONSE,
+        404: RESOURCE_NOT_FOUND_RESPONSE,
+        409: ACCOUNT_CONFLICT_RESPONSE,
+        422: PRICE_MISMATCH_RESPONSE,
+    },
+)
+def update_receipt(
+    receipt_id: UUID,
+    payload: ConfirmReceiptRequest,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> UpdateReceiptResponse:
+    return update_receipt_service(db, current_user, receipt_id, payload)
 
 
 @router.get(

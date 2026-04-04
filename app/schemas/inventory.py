@@ -40,6 +40,8 @@ class CreateInventoryItemResponse(BaseModel):
 
 
 class UpdateInventoryItemRequest(BaseModel):
+    product_name: str | None = Field(default=None, min_length=1)
+    category: str | None = Field(default=None, min_length=1)
     current_qty: Decimal | None = Field(default=None, ge=0)
     min_qty: Decimal | None = Field(default=None, ge=0)
 

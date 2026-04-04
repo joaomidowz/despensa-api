@@ -86,6 +86,12 @@ class ConfirmReceiptResponse(BaseModel):
     items_processed: int
 
 
+class UpdateReceiptResponse(BaseModel):
+    message: str
+    receipt_id: UUID
+    items_processed: int
+
+
 class ReceiptListItemResponse(BaseModel):
     receipt_id: UUID
     market_name: str
