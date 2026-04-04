@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class InventoryStatus(str, Enum):
     IN_STOCK = "Em Estoque"
+    PURCHASED = "Comprado"
     BUY = "Comprar"
 
 
@@ -51,4 +52,3 @@ class InventoryAmountResponse(BaseModel):
     inventory_id: UUID
     current_qty: Decimal
     status: InventoryStatus
-

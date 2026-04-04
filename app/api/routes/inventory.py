@@ -1,14 +1,17 @@
-from fastapi import APIRouter, Query, Response, status
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db_session, require_household
 from app.api.responses import (
     HOUSEHOLD_REQUIRED_RESPONSE,
     INSUFFICIENT_STOCK_RESPONSE,
-    NOT_IMPLEMENTED_RESPONSE,
     RESOURCE_NOT_FOUND_RESPONSE,
     UNAUTHORIZED_RESPONSE,
     VALIDATION_ERROR_RESPONSE,
 )
-from app.core.exceptions import DomainException
+from app.schemas.auth import UserResponse
 from app.schemas.inventory import (
     CreateInventoryItemRequest,
     CreateInventoryItemResponse,
@@ -16,6 +19,14 @@ from app.schemas.inventory import (
     InventoryAmountResponse,
     InventoryItemResponse,
     UpdateInventoryItemRequest,
+)
+from app.services.inventory import (
+    add_inventory_item as add_inventory_item_service,
+    consume_inventory_item as consume_inventory_item_service,
+    create_inventory_item as create_inventory_item_service,
+    delete_inventory_item as delete_inventory_item_service,
+    list_inventory as list_inventory_service,
+    update_inventory_item as update_inventory_item_service,
 )
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -29,11 +40,14 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
         401: UNAUTHORIZED_RESPONSE,
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         422: VALIDATION_ERROR_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def list_inventory(status_filter: str | None = Query(default=None, alias="status")) -> list[InventoryItemResponse]:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def list_inventory(
+    status_filter: str | None = Query(default=None, alias="status"),
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> list[InventoryItemResponse]:
+    return list_inventory_service(db, current_user, status_filter)
 
 
 @router.post(
@@ -44,11 +58,14 @@ def list_inventory(status_filter: str | None = Query(default=None, alias="status
         401: UNAUTHORIZED_RESPONSE,
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         422: VALIDATION_ERROR_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def create_inventory_item(payload: CreateInventoryItemRequest) -> CreateInventoryItemResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def create_inventory_item(
+    payload: CreateInventoryItemRequest,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> CreateInventoryItemResponse:
+    return create_inventory_item_service(db, current_user, payload)
 
 
 @router.patch(
@@ -61,11 +78,15 @@ def create_inventory_item(payload: CreateInventoryItemRequest) -> CreateInventor
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         404: RESOURCE_NOT_FOUND_RESPONSE,
         422: VALIDATION_ERROR_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def consume_inventory_item(inventory_id: str, payload: InventoryAmountRequest) -> InventoryAmountResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def consume_inventory_item(
+    inventory_id: UUID,
+    payload: InventoryAmountRequest,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> InventoryAmountResponse:
+    return consume_inventory_item_service(db, current_user, inventory_id, payload.amount)
 
 
 @router.patch(
@@ -77,11 +98,15 @@ def consume_inventory_item(inventory_id: str, payload: InventoryAmountRequest) -
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         404: RESOURCE_NOT_FOUND_RESPONSE,
         422: VALIDATION_ERROR_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def add_inventory_item(inventory_id: str, payload: InventoryAmountRequest) -> InventoryAmountResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def add_inventory_item(
+    inventory_id: UUID,
+    payload: InventoryAmountRequest,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> InventoryAmountResponse:
+    return add_inventory_item_service(db, current_user, inventory_id, payload.amount)
 
 
 @router.put(
@@ -93,11 +118,15 @@ def add_inventory_item(inventory_id: str, payload: InventoryAmountRequest) -> In
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         404: RESOURCE_NOT_FOUND_RESPONSE,
         422: VALIDATION_ERROR_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def update_inventory_item(inventory_id: str, payload: UpdateInventoryItemRequest) -> InventoryItemResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def update_inventory_item(
+    inventory_id: UUID,
+    payload: UpdateInventoryItemRequest,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> InventoryItemResponse:
+    return update_inventory_item_service(db, current_user, inventory_id, payload)
 
 
 @router.delete(
@@ -107,8 +136,12 @@ def update_inventory_item(inventory_id: str, payload: UpdateInventoryItemRequest
         401: UNAUTHORIZED_RESPONSE,
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         404: RESOURCE_NOT_FOUND_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def delete_inventory_item(inventory_id: str) -> Response:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def delete_inventory_item(
+    inventory_id: UUID,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> Response:
+    delete_inventory_item_service(db, current_user, inventory_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
