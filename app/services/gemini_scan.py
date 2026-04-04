@@ -153,18 +153,8 @@ def _coerce_scan_response(data: dict[str, Any]) -> ReceiptScanResponse:
     return response
 
 
-def scan_receipt_with_gemini(image_base64: str) -> ReceiptScanResponse:
-    settings = get_settings()
-    if not settings.gemini_api_key:
-        raise DomainException(
-            detail="GEMINI_API_KEY nao configurada no ambiente.",
-            code="SCAN_PROVIDER_NOT_CONFIGURED",
-            status_code=500,
-        )
-
-    inline_data, mime_type = _extract_base64_and_mime(image_base64)
-
-    request_body = {
+def _build_request_body(inline_data: str, mime_type: str) -> dict[str, Any]:
+    return {
         "contents": [
             {
                 "parts": [
@@ -179,11 +169,13 @@ def scan_receipt_with_gemini(image_base64: str) -> ReceiptScanResponse:
         },
     }
 
+
+def _request_scan(model_name: str, api_key: str, request_body: dict[str, Any]) -> ReceiptScanResponse:
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent",
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
             headers={
-                "x-goog-api-key": settings.gemini_api_key,
+                "x-goog-api-key": api_key,
                 "Content-Type": "application/json",
             },
             json=request_body,
@@ -203,3 +195,37 @@ def scan_receipt_with_gemini(image_base64: str) -> ReceiptScanResponse:
         raise DomainException.scan_extraction_failed() from exc
 
     return _coerce_scan_response(data)
+
+
+def _scan_models_to_try(primary_model: str, fallback_model: str) -> list[str]:
+    primary = primary_model.strip()
+    fallback = fallback_model.strip()
+    ordered_models = [primary]
+    if fallback and fallback != primary:
+        ordered_models.append(fallback)
+    return ordered_models
+
+
+def scan_receipt_with_gemini(image_base64: str) -> ReceiptScanResponse:
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        raise DomainException(
+            detail="GEMINI_API_KEY nao configurada no ambiente.",
+            code="SCAN_PROVIDER_NOT_CONFIGURED",
+            status_code=500,
+        )
+
+    inline_data, mime_type = _extract_base64_and_mime(image_base64)
+    request_body = _build_request_body(inline_data, mime_type)
+
+    last_error: DomainException | None = None
+    for model_name in _scan_models_to_try(settings.gemini_model, settings.gemini_fallback_model):
+        try:
+            return _request_scan(model_name, settings.gemini_api_key, request_body)
+        except DomainException as exc:
+            last_error = exc
+            continue
+
+    if last_error is not None:
+        raise last_error
+    raise DomainException.scan_extraction_failed()
