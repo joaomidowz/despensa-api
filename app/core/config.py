@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     app_debug: bool = True
     api_v1_prefix: str = "/api"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    frontend_base_url: str = "http://localhost:5173"
     database_url: str
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"

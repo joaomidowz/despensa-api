@@ -1,14 +1,16 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user, get_db_session, require_household
 from app.api.responses import (
+    ACCOUNT_CONFLICT_RESPONSE,
     HOUSEHOLD_REQUIRED_RESPONSE,
     INVITE_INVALID_OR_USED_RESPONSE,
-    NOT_IMPLEMENTED_RESPONSE,
     RESOURCE_NOT_FOUND_RESPONSE,
     UNAUTHORIZED_RESPONSE,
     VALIDATION_ERROR_RESPONSE,
 )
-from app.core.exceptions import DomainException
+from app.schemas.auth import UserResponse
 from app.schemas.households import (
     GenerateInviteRequest,
     GenerateInviteResponse,
@@ -17,6 +19,9 @@ from app.schemas.households import (
     JoinHouseholdRequest,
     JoinHouseholdResponse,
 )
+from app.services.households import create_household as create_household_service
+from app.services.households import generate_invite as generate_invite_service
+from app.services.households import join_household as join_household_service
 
 router = APIRouter(prefix="/households", tags=["households"])
 
@@ -27,12 +32,16 @@ router = APIRouter(prefix="/households", tags=["households"])
     status_code=status.HTTP_201_CREATED,
     responses={
         401: UNAUTHORIZED_RESPONSE,
+        409: ACCOUNT_CONFLICT_RESPONSE,
         422: VALIDATION_ERROR_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def create_household(payload: HouseholdCreateRequest) -> HouseholdResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def create_household(
+    payload: HouseholdCreateRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> HouseholdResponse:
+    return create_household_service(db, current_user, payload.name)
 
 
 @router.post(
@@ -42,13 +51,17 @@ def create_household(payload: HouseholdCreateRequest) -> HouseholdResponse:
     responses={
         401: UNAUTHORIZED_RESPONSE,
         403: HOUSEHOLD_REQUIRED_RESPONSE,
+        409: ACCOUNT_CONFLICT_RESPONSE,
         404: RESOURCE_NOT_FOUND_RESPONSE,
         422: VALIDATION_ERROR_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def generate_invite(payload: GenerateInviteRequest) -> GenerateInviteResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def generate_invite(
+    payload: GenerateInviteRequest,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> GenerateInviteResponse:
+    return generate_invite_service(db, current_user, payload.household_id)
 
 
 @router.post(
@@ -57,10 +70,14 @@ def generate_invite(payload: GenerateInviteRequest) -> GenerateInviteResponse:
     status_code=status.HTTP_200_OK,
     responses={
         401: UNAUTHORIZED_RESPONSE,
+        409: ACCOUNT_CONFLICT_RESPONSE,
         410: INVITE_INVALID_OR_USED_RESPONSE,
         422: VALIDATION_ERROR_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def join_household(payload: JoinHouseholdRequest) -> JoinHouseholdResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def join_household(
+    payload: JoinHouseholdRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> JoinHouseholdResponse:
+    return join_household_service(db, current_user, payload.invite_token)
