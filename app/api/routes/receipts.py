@@ -1,15 +1,18 @@
-from fastapi import APIRouter, Query, status
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db_session, require_household
 from app.api.responses import (
     HOUSEHOLD_REQUIRED_RESPONSE,
-    NOT_IMPLEMENTED_RESPONSE,
     PRICE_MISMATCH_RESPONSE,
     RESOURCE_NOT_FOUND_RESPONSE,
     SCAN_EXTRACTION_FAILED_RESPONSE,
     UNAUTHORIZED_RESPONSE,
     VALIDATION_ERROR_RESPONSE,
 )
-from app.core.exceptions import DomainException
+from app.schemas.auth import UserResponse
 from app.schemas.receipts import (
     ConfirmReceiptRequest,
     ConfirmReceiptResponse,
@@ -18,6 +21,12 @@ from app.schemas.receipts import (
     ReceiptScanRequest,
     ReceiptScanResponse,
 )
+from app.services.receipts import (
+    confirm_receipt as confirm_receipt_service,
+    get_receipt_detail as get_receipt_detail_service,
+    list_receipts as list_receipts_service,
+)
+from app.services.gemini_scan import scan_receipt_with_gemini
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
@@ -30,11 +39,14 @@ router = APIRouter(prefix="/receipts", tags=["receipts"])
         401: UNAUTHORIZED_RESPONSE,
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         422: SCAN_EXTRACTION_FAILED_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def scan_receipt(payload: ReceiptScanRequest) -> ReceiptScanResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def scan_receipt(
+    payload: ReceiptScanRequest,
+    current_user: UserResponse = Depends(require_household),
+) -> ReceiptScanResponse:
+    _ = current_user
+    return scan_receipt_with_gemini(payload.image_base64)
 
 
 @router.post(
@@ -45,11 +57,14 @@ def scan_receipt(payload: ReceiptScanRequest) -> ReceiptScanResponse:
         401: UNAUTHORIZED_RESPONSE,
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         422: PRICE_MISMATCH_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def confirm_receipt(payload: ConfirmReceiptRequest) -> ConfirmReceiptResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def confirm_receipt(
+    payload: ConfirmReceiptRequest,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> ConfirmReceiptResponse:
+    return confirm_receipt_service(db, current_user, payload)
 
 
 @router.get(
@@ -60,7 +75,6 @@ def confirm_receipt(payload: ConfirmReceiptRequest) -> ConfirmReceiptResponse:
         401: UNAUTHORIZED_RESPONSE,
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         422: VALIDATION_ERROR_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
 def list_receipts(
@@ -68,8 +82,10 @@ def list_receipts(
     year: int | None = Query(default=None, ge=2000),
     limit: int = Query(default=10, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
 ) -> PaginatedReceiptsResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+    return list_receipts_service(db, current_user, month, year, limit, offset)
 
 
 @router.get(
@@ -80,8 +96,11 @@ def list_receipts(
         401: UNAUTHORIZED_RESPONSE,
         403: HOUSEHOLD_REQUIRED_RESPONSE,
         404: RESOURCE_NOT_FOUND_RESPONSE,
-        501: NOT_IMPLEMENTED_RESPONSE,
     },
 )
-def get_receipt_detail(receipt_id: str) -> ReceiptDetailResponse:
-    raise DomainException("Endpoint ainda nao implementado.", "NOT_IMPLEMENTED", status.HTTP_501_NOT_IMPLEMENTED)
+def get_receipt_detail(
+    receipt_id: UUID,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> ReceiptDetailResponse:
+    return get_receipt_detail_service(db, current_user, receipt_id)

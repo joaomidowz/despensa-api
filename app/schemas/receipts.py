@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 from app.schemas.common import PaginatedResponse
 
@@ -19,6 +19,7 @@ class ReceiptScanRequest(BaseModel):
 
 class ReceiptScanItemResponse(BaseModel):
     raw_name: str
+    display_name: str
     quantity: Decimal
     unit_price: Decimal
     discount_amount: Decimal = Decimal("0.00")
@@ -34,7 +35,12 @@ class ReceiptScanResponse(BaseModel):
 
 
 class ConfirmReceiptItemRequest(BaseModel):
-    product_name: str = Field(..., min_length=1)
+    product_name: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("product_name", "display_name", "raw_name"),
+        serialization_alias="product_name",
+    )
     quantity: Decimal = Field(..., gt=0)
     unit_price: Decimal = Field(..., ge=0)
     discount_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
@@ -108,4 +114,3 @@ class ReceiptDetailResponse(BaseModel):
     receipt_date: datetime
     total_amount: Decimal
     items: list[ReceiptDetailItemResponse]
-
