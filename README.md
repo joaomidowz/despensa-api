@@ -28,6 +28,3 @@ Fluxo esperado:
 2. Adicionar banco PostgreSQL no projeto Railway
 3. Garantir que `DATABASE_URL` foi conectada ao serviço
 4. Subir a aplicação com o comando configurado em `railway.json`
-
-
-# dispensa-api

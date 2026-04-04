@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "20260404_0001"
 down_revision = None
@@ -16,7 +17,7 @@ branch_labels = None
 depends_on = None
 
 
-item_type_enum = sa.Enum("PRODUCT", "DISCOUNT", name="item_type")
+item_type_enum = postgresql.ENUM("PRODUCT", "DISCOUNT", name="item_type", create_type=False)
 
 
 def _timestamp_default() -> sa.TextClause:
@@ -130,4 +131,3 @@ def downgrade() -> None:
     op.drop_table("products")
     op.drop_table("households")
     item_type_enum.drop(op.get_bind(), checkfirst=True)
-
