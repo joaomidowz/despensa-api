@@ -34,3 +34,7 @@ Fluxo esperado:
 2. Adicionar banco PostgreSQL no projeto Railway
 3. Garantir que `DATABASE_URL` foi conectada ao serviço
 4. Subir a aplicação com o comando configurado em `railway.json`
+
+Observação: no Railway, a expansão de `${PORT:-8000}` precisa rodar dentro de um shell.
+Por isso o `startCommand` usa `sh -c ...`; se o comando for executado diretamente, o
+`uvicorn` recebe a string literal `${PORT:-8000}` e falha ao iniciar.
