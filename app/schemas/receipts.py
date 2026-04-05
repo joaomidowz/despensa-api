@@ -69,6 +69,7 @@ class ConfirmReceiptRequest(BaseModel):
     receipt_date: datetime
     total_amount: Decimal = Field(..., gt=0)
     items: list[ConfirmReceiptItemRequest] = Field(..., min_length=1)
+    matched_shopping_list_item_ids: list[UUID] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_global_rules(self):
@@ -84,12 +85,32 @@ class ConfirmReceiptResponse(BaseModel):
     message: str
     receipt_id: UUID
     items_processed: int
+    matched_shopping_list_item_ids: list[UUID] = Field(default_factory=list)
 
 
 class UpdateReceiptResponse(BaseModel):
     message: str
     receipt_id: UUID
     items_processed: int
+    matched_shopping_list_item_ids: list[UUID] = Field(default_factory=list)
+
+
+class ReconcileShoppingListRequest(BaseModel):
+    shopping_list_item_ids: list[UUID] = Field(..., min_length=1)
+    items: list[ConfirmReceiptItemRequest] = Field(..., min_length=1)
+
+
+class ReconciledShoppingListMatchResponse(BaseModel):
+    shopping_list_item_id: UUID
+    shopping_list_name: str
+    receipt_product_name: str
+    score: Decimal
+
+
+class ReconcileShoppingListResponse(BaseModel):
+    matches: list[ReconciledShoppingListMatchResponse]
+    unmatched_shopping_list_item_ids: list[UUID]
+    unmatched_receipt_product_names: list[str]
 
 
 class ReceiptListItemResponse(BaseModel):

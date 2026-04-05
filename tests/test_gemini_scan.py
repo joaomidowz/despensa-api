@@ -1,8 +1,6 @@
 from decimal import Decimal
 from types import SimpleNamespace
 
-import pytest
-
 from app.core.exceptions import DomainException
 from app.services.gemini_scan import (
     _build_display_name,

@@ -29,10 +29,8 @@ def normalize_product_name(name: str) -> str:
 
 
 def _status_for(current_qty: Decimal, min_qty: Decimal) -> InventoryStatus:
-    if current_qty < min_qty:
+    if current_qty <= min_qty:
         return InventoryStatus.BUY
-    if current_qty == min_qty:
-        return InventoryStatus.PURCHASED
     return InventoryStatus.IN_STOCK
 
 

@@ -11,12 +11,16 @@ from app.core.exceptions import DomainException
 from app.models.inventory import InventoryItem
 from app.models.product import Product
 from app.models.receipt import Receipt, ReceiptItem
+from app.models.shopping_list import ShoppingListItem
 from app.schemas.auth import UserResponse
 from app.schemas.receipts import (
     ConfirmReceiptRequest,
     ConfirmReceiptResponse,
     ItemType,
     PaginatedReceiptsResponse,
+    ReconciledShoppingListMatchResponse,
+    ReconcileShoppingListRequest,
+    ReconcileShoppingListResponse,
     ReceiptDetailItemResponse,
     ReceiptDetailResponse,
     ReceiptListItemResponse,
@@ -43,6 +47,112 @@ def infer_product_category(product_name: str) -> str:
         if any(keyword in normalized_name for keyword in keywords):
             return category
     return "Sem Categoria"
+
+
+def _tokenize_product_name(value: str) -> set[str]:
+    return {
+        token
+        for token in normalize_product_name(value).split()
+        if len(token) >= 2
+    }
+
+
+def _score_product_match(left: str, right: str) -> float:
+    left_tokens = _tokenize_product_name(left)
+    right_tokens = _tokenize_product_name(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+
+    intersection = len(left_tokens & right_tokens)
+    ratio = intersection / max(len(left_tokens), len(right_tokens))
+    normalized_left = normalize_product_name(left)
+    normalized_right = normalize_product_name(right)
+    contains = 1.0 if normalized_left and normalized_left in normalized_right else 0.0
+    return max(ratio, contains)
+
+
+def _get_shopping_list_items(
+    db: Session,
+    current_user: UserResponse,
+    shopping_list_item_ids: list[UUID],
+) -> list[ShoppingListItem]:
+    if not shopping_list_item_ids:
+        return []
+
+    return db.scalars(
+        select(ShoppingListItem).where(
+            ShoppingListItem.household_id == current_user.household_id,
+            ShoppingListItem.id.in_(shopping_list_item_ids),
+        )
+    ).all()
+
+
+def reconcile_shopping_list_items(
+    db: Session,
+    current_user: UserResponse,
+    payload: ReconcileShoppingListRequest,
+) -> ReconcileShoppingListResponse:
+    shopping_list_items = _get_shopping_list_items(db, current_user, payload.shopping_list_item_ids)
+    product_items = [item for item in payload.items if item.item_type == ItemType.PRODUCT]
+    if not shopping_list_items or not product_items:
+        return ReconcileShoppingListResponse(
+            matches=[],
+            unmatched_shopping_list_item_ids=payload.shopping_list_item_ids,
+            unmatched_receipt_product_names=[item.product_name for item in product_items],
+        )
+
+    matches: list[ReconciledShoppingListMatchResponse] = []
+    used_receipt_indexes: set[int] = set()
+    matched_shopping_list_ids: set[UUID] = set()
+
+    for shopping_list_item in shopping_list_items:
+        best_index: int | None = None
+        best_score = 0.0
+
+        for index, receipt_item in enumerate(product_items):
+            if index in used_receipt_indexes:
+                continue
+            score = _score_product_match(shopping_list_item.name, receipt_item.product_name)
+            if score > best_score:
+                best_score = score
+                best_index = index
+
+        if best_index is not None and best_score >= 0.6:
+            matched_shopping_list_ids.add(shopping_list_item.id)
+            used_receipt_indexes.add(best_index)
+            matches.append(
+                ReconciledShoppingListMatchResponse(
+                    shopping_list_item_id=shopping_list_item.id,
+                    shopping_list_name=shopping_list_item.name,
+                    receipt_product_name=product_items[best_index].product_name,
+                    score=Decimal(str(round(best_score, 4))),
+                )
+            )
+
+    return ReconcileShoppingListResponse(
+        matches=matches,
+        unmatched_shopping_list_item_ids=[
+            item.id for item in shopping_list_items if item.id not in matched_shopping_list_ids
+        ],
+        unmatched_receipt_product_names=[
+            item.product_name
+            for index, item in enumerate(product_items)
+            if index not in used_receipt_indexes
+        ],
+    )
+
+
+def _delete_confirmed_shopping_list_items(
+    db: Session,
+    current_user: UserResponse,
+    shopping_list_item_ids: list[UUID],
+) -> list[UUID]:
+    shopping_list_items = _get_shopping_list_items(db, current_user, shopping_list_item_ids)
+    deleted_ids: list[UUID] = []
+    for item in shopping_list_items:
+        deleted_ids.append(item.id)
+        db.delete(item)
+    return deleted_ids
 
 
 def confirm_receipt(
@@ -117,6 +227,12 @@ def confirm_receipt(
             db.add(receipt_item)
             processed_count += 1
 
+        deleted_shopping_list_item_ids = _delete_confirmed_shopping_list_items(
+            db,
+            current_user,
+            payload.matched_shopping_list_item_ids,
+        )
+
         db.commit()
         db.refresh(receipt)
     except Exception:
@@ -127,6 +243,7 @@ def confirm_receipt(
         message="Compra registrada e estoque atualizado com sucesso.",
         receipt_id=receipt.id,
         items_processed=processed_count,
+        matched_shopping_list_item_ids=deleted_shopping_list_item_ids,
     )
 
 
@@ -254,6 +371,11 @@ def update_receipt(
         db.add(receipt)
 
         processed_count = _apply_receipt_items(db, current_user, receipt, payload)
+        deleted_shopping_list_item_ids = _delete_confirmed_shopping_list_items(
+            db,
+            current_user,
+            payload.matched_shopping_list_item_ids,
+        )
         db.commit()
         db.refresh(receipt)
     except Exception:
@@ -264,6 +386,7 @@ def update_receipt(
         message="Compra atualizada com sucesso.",
         receipt_id=receipt.id,
         items_processed=processed_count,
+        matched_shopping_list_item_ids=deleted_shopping_list_item_ids,
     )
 
 
