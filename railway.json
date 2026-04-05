@@ -1,12 +1,10 @@
 {
-    "$schema": "https://railway.com/railway.schema.json",
-    "deploy": {
-      "healthcheckPath": "/healthz",
-      "healthcheckTimeout": 120,
-      "restartPolicyType": "on_failure",
-      "restartPolicyMaxRetries": 10,
-      "startCommand": "python -u -c \"print('STARTING_MIGRATIONS')\" && alembic upgrade head &&
-  python -u -c \"print('MIGRATIONS_DONE')\" && uvicorn app.main:app --host 0.0.0.0 --port
-  ${PORT:-8000}"
-    }
+  "$schema": "https://railway.com/railway.schema.json",
+  "deploy": {
+    "healthcheckPath": "/healthz",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "on_failure",
+    "restartPolicyMaxRetries": 10,
+    "startCommand": "python -u -c \"print('STARTING_MIGRATIONS')\" && alembic upgrade head && python -u -c \"print('MIGRATIONS_DONE')\" && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
   }
+}
