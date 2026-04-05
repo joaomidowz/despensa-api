@@ -34,3 +34,7 @@ Fluxo esperado:
 2. Adicionar banco PostgreSQL no projeto Railway
 3. Garantir que `DATABASE_URL` foi conectada ao serviço
 4. Subir a aplicação com o comando configurado em `railway.json`
+
+Observação: o deploy usa `python -m app.main`, e o próprio backend lê `PORT` via
+`os.getenv("PORT", "8000")`. Isso evita depender de expansão por shell no comando
+de start do Railway.
