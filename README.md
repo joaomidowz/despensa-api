@@ -21,6 +21,12 @@ Backend em FastAPI para o projeto Gestor de Despensa.
 ## Railway
 
 O projeto está pronto para usar `DATABASE_URL` injetada pelo PostgreSQL do Railway.
+O backend normaliza automaticamente URLs `postgres://` e `postgresql://` para o driver
+interno `postgresql+psycopg://`.
+
+Para desenvolvimento local apontando para um banco hospedado no Railway, o backend tambem aceita
+`DATABASE_PUBLIC_URL` como fallback. Isso evita usar hosts `*.railway.internal`, que so resolvem
+dentro da rede privada do Railway.
 
 Fluxo esperado:
 
