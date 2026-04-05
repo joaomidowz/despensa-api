@@ -14,6 +14,18 @@ class HouseholdResponse(BaseModel):
     owner_id: UUID
 
 
+class HouseholdMemberResponse(BaseModel):
+    user_id: UUID
+    name: str
+
+
+class CurrentHouseholdResponse(BaseModel):
+    household_id: UUID
+    name: str
+    owner_id: UUID
+    members: list[HouseholdMemberResponse]
+
+
 class GenerateInviteRequest(BaseModel):
     household_id: UUID
 
@@ -32,4 +44,3 @@ class JoinHouseholdResponse(BaseModel):
     message: str
     household_id: UUID
     household_name: str
-

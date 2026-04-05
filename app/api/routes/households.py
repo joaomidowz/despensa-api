@@ -12,6 +12,7 @@ from app.api.responses import (
 )
 from app.schemas.auth import UserResponse
 from app.schemas.households import (
+    CurrentHouseholdResponse,
     GenerateInviteRequest,
     GenerateInviteResponse,
     HouseholdCreateRequest,
@@ -21,9 +22,27 @@ from app.schemas.households import (
 )
 from app.services.households import create_household as create_household_service
 from app.services.households import generate_invite as generate_invite_service
+from app.services.households import get_current_household as get_current_household_service
 from app.services.households import join_household as join_household_service
 
 router = APIRouter(prefix="/households", tags=["households"])
+
+
+@router.get(
+    "/current",
+    response_model=CurrentHouseholdResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: UNAUTHORIZED_RESPONSE,
+        403: HOUSEHOLD_REQUIRED_RESPONSE,
+        404: RESOURCE_NOT_FOUND_RESPONSE,
+    },
+)
+def get_current_household(
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> CurrentHouseholdResponse:
+    return get_current_household_service(db, current_user)
 
 
 @router.post(

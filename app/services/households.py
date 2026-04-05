@@ -12,7 +12,13 @@ from app.core.exceptions import DomainException
 from app.models.household import Household
 from app.models.user import User
 from app.schemas.auth import UserResponse
-from app.schemas.households import GenerateInviteResponse, HouseholdResponse, JoinHouseholdResponse
+from app.schemas.households import (
+    CurrentHouseholdResponse,
+    GenerateInviteResponse,
+    HouseholdMemberResponse,
+    HouseholdResponse,
+    JoinHouseholdResponse,
+)
 
 
 def _get_user(db: Session, user_id: UUID) -> User:
@@ -33,6 +39,27 @@ def _serialize_household(household: Household) -> HouseholdResponse:
 def _build_invite_url(invite_token: str) -> str:
     settings = get_settings()
     return f"{settings.frontend_base_url.rstrip('/')}/join/{invite_token}"
+
+
+def get_current_household(db: Session, current_user: UserResponse) -> CurrentHouseholdResponse:
+    household = db.scalar(select(Household).where(Household.id == current_user.household_id))
+    if household is None:
+        raise DomainException.resource_not_found()
+
+    members = db.scalars(select(User).where(User.household_id == household.id).order_by(User.created_at.asc())).all()
+
+    return CurrentHouseholdResponse(
+        household_id=household.id,
+        name=household.name,
+        owner_id=household.owner_id,
+        members=[
+            HouseholdMemberResponse(
+                user_id=member.id,
+                name=member.name,
+            )
+            for member in members
+        ],
+    )
 
 
 def create_household(db: Session, current_user: UserResponse, name: str) -> HouseholdResponse:
