@@ -35,6 +35,6 @@ Fluxo esperado:
 3. Garantir que `DATABASE_URL` foi conectada ao serviço
 4. Subir a aplicação com o comando configurado em `railway.json`
 
-Observação: no Railway, a expansão de `${PORT:-8000}` precisa rodar dentro de um shell.
-Por isso o `startCommand` usa `sh -c ...`; se o comando for executado diretamente, o
-`uvicorn` recebe a string literal `${PORT:-8000}` e falha ao iniciar.
+Observação: o deploy usa `python -m app.main`, e o próprio backend lê `PORT` via
+`os.getenv("PORT", "8000")`. Isso evita depender de expansão por shell no comando
+de start do Railway.
