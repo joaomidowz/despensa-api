@@ -23,16 +23,19 @@ def get_db_session() -> Generator[Session, None, None]:
         db.close()
 
 
-def get_current_user(
+def get_current_user_record(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db_session),
-) -> UserResponse:
+) -> User:
     if token is None:
         raise DomainException.unauthorized()
 
     payload = decode_access_token(token)
     subject = payload.get("sub")
+    token_version = payload.get("token_version")
     if subject is None:
+        raise DomainException.unauthorized()
+    if not isinstance(token_version, int):
         raise DomainException.unauthorized()
 
     try:
@@ -43,13 +46,21 @@ def get_current_user(
     user = db.scalar(select(User).where(User.id == user_id))
     if user is None:
         raise DomainException.unauthorized()
+    if user.token_version != token_version:
+        raise DomainException.unauthorized(detail="Sessao encerrada. Entre novamente.")
 
+    return user
+
+
+def get_current_user(
+    current_user: User = Depends(get_current_user_record),
+) -> UserResponse:
     return UserResponse(
-        user_id=user.id,
-        name=user.name,
-        email=user.email,
-        avatar_url=user.avatar_url,
-        household_id=user.household_id,
+        user_id=current_user.id,
+        name=current_user.name,
+        email=current_user.email,
+        avatar_url=current_user.avatar_url,
+        household_id=current_user.household_id,
     )
 
 

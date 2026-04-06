@@ -9,13 +9,14 @@ from app.core.config import get_settings
 from app.core.exceptions import DomainException
 
 
-def create_access_token(*, user_id: UUID, email: str, household_id: UUID | None) -> str:
+def create_access_token(*, user_id: UUID, email: str, household_id: UUID | None, token_version: int) -> str:
     settings = get_settings()
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.jwt_expires_in_minutes)
     payload = {
         "sub": str(user_id),
         "email": email,
         "household_id": str(household_id) if household_id is not None else None,
+        "token_version": token_version,
         "exp": expires_at,
     }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)

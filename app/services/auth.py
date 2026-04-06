@@ -93,6 +93,7 @@ def authenticate_with_google(db: Session, google_id_token: str) -> AuthResponse:
         user_id=user.id,
         email=user.email,
         household_id=user.household_id,
+        token_version=user.token_version,
     )
 
     return AuthResponse(
