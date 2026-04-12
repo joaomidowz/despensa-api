@@ -16,6 +16,7 @@ from app.schemas.households import (
     CurrentHouseholdResponse,
     GenerateInviteResponse,
     HouseholdMemberResponse,
+    HouseholdMemberRole,
     HouseholdResponse,
     JoinHouseholdResponse,
 )
@@ -56,6 +57,11 @@ def get_current_household(db: Session, current_user: UserResponse) -> CurrentHou
             HouseholdMemberResponse(
                 user_id=member.id,
                 name=member.name,
+                role=(
+                    HouseholdMemberRole.OWNER
+                    if member.id == household.owner_id
+                    else HouseholdMemberRole.MEMBER
+                ),
             )
             for member in members
         ],

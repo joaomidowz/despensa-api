@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -32,6 +33,7 @@ def _serialize(item: ShoppingListItem) -> ShoppingListItemResponse:
         category=item.category,
         notes=item.notes,
         desired_qty=item.desired_qty,
+        estimated_unit_price=item.estimated_unit_price,
         checked=item.checked,
         created_at=item.created_at,
         updated_at=item.updated_at,
@@ -69,6 +71,37 @@ def _get_inventory(db: Session, household_id: UUID, inventory_id: UUID) -> tuple
     if row is None:
         raise DomainException.resource_not_found()
     return row
+
+
+def _lookup_latest_unit_price(
+    db: Session,
+    household_id: UUID,
+    *,
+    product_id: UUID | None = None,
+    normalized_name: str | None = None,
+) -> Decimal | None:
+    stmt = (
+        select(ReceiptItem.unit_price)
+        .join(Receipt, Receipt.id == ReceiptItem.receipt_id)
+        .where(
+            Receipt.household_id == household_id,
+            Receipt.deleted_at.is_(None),
+            ReceiptItem.item_type == ItemType.PRODUCT,
+        )
+        .order_by(Receipt.receipt_date.desc(), Receipt.created_at.desc(), ReceiptItem.id.desc())
+        .limit(1)
+    )
+
+    if product_id is not None:
+        stmt = stmt.where(ReceiptItem.product_id == product_id)
+    elif normalized_name is not None:
+        stmt = stmt.join(Product, Product.id == ReceiptItem.product_id).where(
+            Product.normalized_name == normalized_name
+        )
+    else:
+        return None
+
+    return db.scalar(stmt)
 
 
 def _find_existing_active_item(
@@ -128,6 +161,7 @@ def create_shopping_list_item(
         category=_clean_optional_text(payload.category),
         notes=_clean_optional_text(payload.notes),
         desired_qty=payload.desired_qty,
+        estimated_unit_price=payload.estimated_unit_price,
         checked=False,
         created_at=now,
         updated_at=now,
@@ -145,6 +179,12 @@ def add_inventory_item_to_shopping_list(
 ) -> ShoppingListItemResponse:
     inventory_item, product = _get_inventory(db, current_user.household_id, payload.inventory_id)
     normalized_name = normalize_product_name(product.name)
+    latest_unit_price = _lookup_latest_unit_price(
+        db,
+        current_user.household_id,
+        product_id=product.id,
+        normalized_name=normalized_name,
+    )
     existing_item = _find_existing_active_item(
         db,
         current_user.household_id,
@@ -159,6 +199,8 @@ def add_inventory_item_to_shopping_list(
         existing_item.source = ShoppingListItemSource.INVENTORY
         existing_item.category = product.category
         existing_item.desired_qty += payload.desired_qty
+        if existing_item.estimated_unit_price is None:
+            existing_item.estimated_unit_price = latest_unit_price
         if existing_item.notes is None:
             existing_item.notes = _clean_optional_text(payload.notes)
         existing_item.updated_at = now
@@ -178,6 +220,7 @@ def add_inventory_item_to_shopping_list(
         category=product.category,
         notes=_clean_optional_text(payload.notes),
         desired_qty=payload.desired_qty,
+        estimated_unit_price=latest_unit_price,
         checked=False,
         created_at=now,
         updated_at=now,
@@ -212,12 +255,14 @@ def update_shopping_list_item(
         item.name = payload.name.strip()
         item.normalized_name = normalized_name
 
-    if payload.category is not None:
+    if "category" in payload.model_fields_set:
         item.category = _clean_optional_text(payload.category)
-    if payload.notes is not None:
+    if "notes" in payload.model_fields_set:
         item.notes = _clean_optional_text(payload.notes)
     if payload.desired_qty is not None:
         item.desired_qty = payload.desired_qty
+    if "estimated_unit_price" in payload.model_fields_set:
+        item.estimated_unit_price = payload.estimated_unit_price
     if payload.checked is not None:
         item.checked = payload.checked
 
@@ -265,6 +310,11 @@ def list_shopping_list_catalog(
             category=category,
             purchase_count=purchase_count,
             last_purchased_at=last_purchased_at,
+            last_unit_price=_lookup_latest_unit_price(
+                db,
+                current_user.household_id,
+                normalized_name=normalize_product_name(name),
+            ),
         )
         for name, category, purchase_count, last_purchased_at in rows
     ]

@@ -23,6 +23,7 @@ class ShoppingListItemResponse(BaseModel):
     category: str | None = None
     notes: str | None = None
     desired_qty: Decimal
+    estimated_unit_price: Decimal | None = None
     checked: bool
     created_at: datetime
     updated_at: datetime
@@ -33,6 +34,7 @@ class CreateShoppingListItemRequest(BaseModel):
     category: str | None = Field(default=None, min_length=1)
     notes: str | None = None
     desired_qty: Decimal = Field(default=Decimal("1"), gt=0)
+    estimated_unit_price: Decimal | None = Field(default=None, ge=0)
 
 
 class AddInventoryItemToShoppingListRequest(BaseModel):
@@ -46,6 +48,7 @@ class UpdateShoppingListItemRequest(BaseModel):
     category: str | None = Field(default=None, min_length=1)
     notes: str | None = None
     desired_qty: Decimal | None = Field(default=None, gt=0)
+    estimated_unit_price: Decimal | None = Field(default=None, ge=0)
     checked: bool | None = None
 
 
@@ -54,3 +57,4 @@ class ShoppingListCatalogItemResponse(BaseModel):
     category: str | None = None
     purchase_count: int
     last_purchased_at: datetime
+    last_unit_price: Decimal | None = None

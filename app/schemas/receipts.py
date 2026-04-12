@@ -95,6 +95,11 @@ class UpdateReceiptResponse(BaseModel):
     matched_shopping_list_item_ids: list[UUID] = Field(default_factory=list)
 
 
+class DeleteReceiptResponse(BaseModel):
+    message: str
+    receipt_id: UUID
+
+
 class ReconcileShoppingListRequest(BaseModel):
     shopping_list_item_ids: list[UUID] = Field(..., min_length=1)
     items: list[ConfirmReceiptItemRequest] = Field(..., min_length=1)

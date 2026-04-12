@@ -39,3 +39,15 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={"detail": str(exc), "code": "NOT_IMPLEMENTED"},
         )
 
+    @app.exception_handler(Exception)
+    async def handle_unexpected_exception(
+        request: Request,
+        exc: Exception,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "detail": "Erro interno ao processar a requisicao.",
+                "code": "INTERNAL_SERVER_ERROR",
+            },
+        )

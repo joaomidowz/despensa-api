@@ -1,7 +1,13 @@
 from datetime import datetime
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
+
+
+class HouseholdMemberRole(str, Enum):
+    OWNER = "OWNER"
+    MEMBER = "MEMBER"
 
 
 class HouseholdCreateRequest(BaseModel):
@@ -17,6 +23,7 @@ class HouseholdResponse(BaseModel):
 class HouseholdMemberResponse(BaseModel):
     user_id: UUID
     name: str
+    role: HouseholdMemberRole
 
 
 class CurrentHouseholdResponse(BaseModel):
