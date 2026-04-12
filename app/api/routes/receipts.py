@@ -17,6 +17,7 @@ from app.schemas.auth import UserResponse
 from app.schemas.receipts import (
     ConfirmReceiptRequest,
     ConfirmReceiptResponse,
+    DeleteReceiptResponse,
     PaginatedReceiptsResponse,
     ReconcileShoppingListRequest,
     ReconcileShoppingListResponse,
@@ -27,6 +28,7 @@ from app.schemas.receipts import (
 )
 from app.services.receipts import (
     confirm_receipt as confirm_receipt_service,
+    delete_receipt as delete_receipt_service,
     get_receipt_detail as get_receipt_detail_service,
     list_receipts as list_receipts_service,
     reconcile_shopping_list_items as reconcile_shopping_list_items_service,
@@ -110,6 +112,25 @@ def update_receipt(
     db: Session = Depends(get_db_session),
 ) -> UpdateReceiptResponse:
     return update_receipt_service(db, current_user, receipt_id, payload)
+
+
+@router.delete(
+    "/{receipt_id}",
+    response_model=DeleteReceiptResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: UNAUTHORIZED_RESPONSE,
+        403: HOUSEHOLD_REQUIRED_RESPONSE,
+        404: RESOURCE_NOT_FOUND_RESPONSE,
+        409: ACCOUNT_CONFLICT_RESPONSE,
+    },
+)
+def delete_receipt(
+    receipt_id: UUID,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> DeleteReceiptResponse:
+    return delete_receipt_service(db, current_user, receipt_id)
 
 
 @router.get(

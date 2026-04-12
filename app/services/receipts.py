@@ -16,6 +16,7 @@ from app.schemas.auth import UserResponse
 from app.schemas.receipts import (
     ConfirmReceiptRequest,
     ConfirmReceiptResponse,
+    DeleteReceiptResponse,
     ItemType,
     PaginatedReceiptsResponse,
     ReconciledShoppingListMatchResponse,
@@ -155,6 +156,61 @@ def _delete_confirmed_shopping_list_items(
     return deleted_ids
 
 
+def _get_or_create_product(
+    db: Session,
+    product_cache: dict[str, Product],
+    product_name: str,
+) -> Product:
+    normalized_name = normalize_product_name(product_name)
+    cached = product_cache.get(normalized_name)
+    if cached is not None:
+        return cached
+
+    product = db.scalar(select(Product).where(Product.normalized_name == normalized_name))
+    if product is None:
+        product = Product(
+            name=product_name.strip(),
+            normalized_name=normalized_name,
+            category=infer_product_category(product_name),
+        )
+        db.add(product)
+        db.flush()
+
+    product_cache[normalized_name] = product
+    return product
+
+
+def _get_or_create_inventory_item(
+    db: Session,
+    current_user: UserResponse,
+    inventory_cache: dict[UUID, InventoryItem],
+    product_id: UUID,
+    now: datetime,
+) -> InventoryItem:
+    cached = inventory_cache.get(product_id)
+    if cached is not None:
+        return cached
+
+    inventory_item = db.scalar(
+        select(InventoryItem).where(
+            InventoryItem.household_id == current_user.household_id,
+            InventoryItem.product_id == product_id,
+        )
+    )
+    if inventory_item is None:
+        inventory_item = InventoryItem(
+            household_id=current_user.household_id,
+            product_id=product_id,
+            current_qty=Decimal("0"),
+            min_qty=Decimal("0"),
+            updated_at=now,
+        )
+        db.add(inventory_item)
+
+    inventory_cache[product_id] = inventory_item
+    return inventory_item
+
+
 def confirm_receipt(
     db: Session,
     current_user: UserResponse,
@@ -173,44 +229,27 @@ def confirm_receipt(
 
         processed_count = 0
         now = datetime.now(UTC)
+        product_cache: dict[str, Product] = {}
+        inventory_cache: dict[UUID, InventoryItem] = {}
 
         for item in payload.items:
             product_id: UUID | None = None
             category: str | None = None
 
             if item.item_type == ItemType.PRODUCT:
-                normalized_name = normalize_product_name(item.product_name)
-                product = db.scalar(select(Product).where(Product.normalized_name == normalized_name))
-                if product is None:
-                    inferred_category = infer_product_category(item.product_name)
-                    product = Product(
-                        name=item.product_name.strip(),
-                        normalized_name=normalized_name,
-                        category=inferred_category,
-                    )
-                    db.add(product)
-                    db.flush()
-
+                product = _get_or_create_product(db, product_cache, item.product_name)
                 product_id = product.id
                 category = product.category
 
-                inventory_item = db.scalar(
-                    select(InventoryItem).where(
-                        InventoryItem.household_id == current_user.household_id,
-                        InventoryItem.product_id == product.id,
-                    )
+                inventory_item = _get_or_create_inventory_item(
+                    db,
+                    current_user,
+                    inventory_cache,
+                    product.id,
+                    now,
                 )
-                if inventory_item is None:
-                    inventory_item = InventoryItem(
-                        household_id=current_user.household_id,
-                        product_id=product.id,
-                        current_qty=item.quantity,
-                        min_qty=Decimal("0"),
-                        updated_at=now,
-                    )
-                else:
-                    inventory_item.current_qty += item.quantity
-                    inventory_item.updated_at = now
+                inventory_item.current_qty += item.quantity
+                inventory_item.updated_at = now
                 db.add(inventory_item)
 
             receipt_item = ReceiptItem(
@@ -235,6 +274,12 @@ def confirm_receipt(
 
         db.commit()
         db.refresh(receipt)
+    except IntegrityError as exc:
+        db.rollback()
+        raise DomainException.conflict(
+            detail="Nao foi possivel confirmar a compra por conflito de dados. Revise os itens e tente novamente.",
+            code="RECEIPT_CONFIRM_CONFLICT",
+        ) from exc
     except Exception:
         db.rollback()
         raise
@@ -255,44 +300,27 @@ def _apply_receipt_items(
 ) -> int:
     processed_count = 0
     now = datetime.now(UTC)
+    product_cache: dict[str, Product] = {}
+    inventory_cache: dict[UUID, InventoryItem] = {}
 
     for item in payload.items:
         product_id: UUID | None = None
         category: str | None = None
 
         if item.item_type == ItemType.PRODUCT:
-            normalized_name = normalize_product_name(item.product_name)
-            product = db.scalar(select(Product).where(Product.normalized_name == normalized_name))
-            if product is None:
-                inferred_category = infer_product_category(item.product_name)
-                product = Product(
-                    name=item.product_name.strip(),
-                    normalized_name=normalized_name,
-                    category=inferred_category,
-                )
-                db.add(product)
-                db.flush()
-
+            product = _get_or_create_product(db, product_cache, item.product_name)
             product_id = product.id
             category = product.category
 
-            inventory_item = db.scalar(
-                select(InventoryItem).where(
-                    InventoryItem.household_id == current_user.household_id,
-                    InventoryItem.product_id == product.id,
-                )
+            inventory_item = _get_or_create_inventory_item(
+                db,
+                current_user,
+                inventory_cache,
+                product.id,
+                now,
             )
-            if inventory_item is None:
-                inventory_item = InventoryItem(
-                    household_id=current_user.household_id,
-                    product_id=product.id,
-                    current_qty=item.quantity,
-                    min_qty=Decimal("0"),
-                    updated_at=now,
-                )
-            else:
-                inventory_item.current_qty += item.quantity
-                inventory_item.updated_at = now
+            inventory_item.current_qty += item.quantity
+            inventory_item.updated_at = now
             db.add(inventory_item)
 
         receipt_item = ReceiptItem(
@@ -387,6 +415,36 @@ def update_receipt(
         receipt_id=receipt.id,
         items_processed=processed_count,
         matched_shopping_list_item_ids=deleted_shopping_list_item_ids,
+    )
+
+
+def delete_receipt(
+    db: Session,
+    current_user: UserResponse,
+    receipt_id: UUID,
+) -> DeleteReceiptResponse:
+    receipt = db.scalar(
+        select(Receipt).where(
+            Receipt.id == receipt_id,
+            Receipt.household_id == current_user.household_id,
+            Receipt.deleted_at.is_(None),
+        )
+    )
+    if receipt is None:
+        raise DomainException.resource_not_found()
+
+    try:
+        receipt.deleted_at = datetime.now(UTC)
+        receipt.deleted_by = current_user.user_id
+        db.add(receipt)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return DeleteReceiptResponse(
+        message="Compra excluida com sucesso.",
+        receipt_id=receipt.id,
     )
 
 
