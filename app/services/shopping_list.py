@@ -15,6 +15,7 @@ from app.models.shopping_list import ShoppingListItem, ShoppingListItemSource
 from app.schemas.auth import UserResponse
 from app.schemas.shopping_list import (
     AddInventoryItemToShoppingListRequest,
+    BulkUpdateShoppingListItemsRequest,
     CreateShoppingListItemRequest,
     ShoppingListCatalogItemResponse,
     ShoppingListItemResponse,
@@ -271,6 +272,52 @@ def update_shopping_list_item(
     db.commit()
     db.refresh(item)
     return _serialize(item)
+
+
+def bulk_update_shopping_list_items(
+    db: Session,
+    current_user: UserResponse,
+    payload: BulkUpdateShoppingListItemsRequest,
+) -> list[ShoppingListItemResponse]:
+    if not payload.changes:
+        return []
+
+    ids = [change.id for change in payload.changes]
+    rows = db.scalars(
+        select(ShoppingListItem).where(
+            ShoppingListItem.household_id == current_user.household_id,
+            ShoppingListItem.id.in_(ids),
+        )
+    ).all()
+
+    items_by_id = {item.id: item for item in rows}
+    updated_items: list[ShoppingListItem] = []
+
+    for change in payload.changes:
+        item = items_by_id.get(change.id)
+        if item is None:
+            continue
+
+        client_updated_at = datetime.fromtimestamp(change.ts, UTC)
+        if item.updated_at > client_updated_at:
+            continue
+
+        if item.checked == change.checked and item.updated_at >= client_updated_at:
+            continue
+
+        item.checked = change.checked
+        item.updated_at = client_updated_at
+        db.add(item)
+        updated_items.append(item)
+
+    if not updated_items:
+        return [_serialize(item) for item in rows]
+
+    db.commit()
+    for item in updated_items:
+        db.refresh(item)
+
+    return [_serialize(item) for item in rows]
 
 
 def delete_shopping_list_item(
