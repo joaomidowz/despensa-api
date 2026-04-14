@@ -86,6 +86,24 @@ def add_inventory_item_to_shopping_list(
 
 
 @router.patch(
+    "/items/bulk",
+    response_model=list[ShoppingListItemResponse],
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: UNAUTHORIZED_RESPONSE,
+        403: HOUSEHOLD_REQUIRED_RESPONSE,
+        422: VALIDATION_ERROR_RESPONSE,
+    },
+)
+def bulk_update_shopping_list_items(
+    payload: BulkUpdateShoppingListItemsRequest,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> list[ShoppingListItemResponse]:
+    return bulk_update_shopping_list_items_service(db, current_user, payload)
+
+
+@router.patch(
     "/items/{shopping_list_item_id}",
     response_model=ShoppingListItemResponse,
     status_code=status.HTTP_200_OK,
@@ -103,24 +121,6 @@ def update_shopping_list_item(
     db: Session = Depends(get_db_session),
 ) -> ShoppingListItemResponse:
     return update_shopping_list_item_service(db, current_user, shopping_list_item_id, payload)
-
-
-@router.patch(
-    "/items/bulk",
-    response_model=list[ShoppingListItemResponse],
-    status_code=status.HTTP_200_OK,
-    responses={
-        401: UNAUTHORIZED_RESPONSE,
-        403: HOUSEHOLD_REQUIRED_RESPONSE,
-        422: VALIDATION_ERROR_RESPONSE,
-    },
-)
-def bulk_update_shopping_list_items(
-    payload: BulkUpdateShoppingListItemsRequest,
-    current_user: UserResponse = Depends(require_household),
-    db: Session = Depends(get_db_session),
-) -> list[ShoppingListItemResponse]:
-    return bulk_update_shopping_list_items_service(db, current_user, payload)
 
 
 @router.delete(
