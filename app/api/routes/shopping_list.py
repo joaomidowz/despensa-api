@@ -13,6 +13,7 @@ from app.api.responses import (
 from app.schemas.auth import UserResponse
 from app.schemas.shopping_list import (
     AddInventoryItemToShoppingListRequest,
+    BulkUpdateShoppingListItemsRequest,
     CreateShoppingListItemRequest,
     ShoppingListCatalogItemResponse,
     ShoppingListItemResponse,
@@ -20,6 +21,7 @@ from app.schemas.shopping_list import (
 )
 from app.services.shopping_list import (
     add_inventory_item_to_shopping_list as add_inventory_item_to_shopping_list_service,
+    bulk_update_shopping_list_items as bulk_update_shopping_list_items_service,
     create_shopping_list_item as create_shopping_list_item_service,
     delete_shopping_list_item as delete_shopping_list_item_service,
     list_shopping_list_catalog as list_shopping_list_catalog_service,
@@ -81,6 +83,24 @@ def add_inventory_item_to_shopping_list(
     db: Session = Depends(get_db_session),
 ) -> ShoppingListItemResponse:
     return add_inventory_item_to_shopping_list_service(db, current_user, payload)
+
+
+@router.patch(
+    "/items/bulk",
+    response_model=list[ShoppingListItemResponse],
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: UNAUTHORIZED_RESPONSE,
+        403: HOUSEHOLD_REQUIRED_RESPONSE,
+        422: VALIDATION_ERROR_RESPONSE,
+    },
+)
+def bulk_update_shopping_list_items(
+    payload: BulkUpdateShoppingListItemsRequest,
+    current_user: UserResponse = Depends(require_household),
+    db: Session = Depends(get_db_session),
+) -> list[ShoppingListItemResponse]:
+    return bulk_update_shopping_list_items_service(db, current_user, payload)
 
 
 @router.patch(

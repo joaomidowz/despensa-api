@@ -52,6 +52,16 @@ class UpdateShoppingListItemRequest(BaseModel):
     checked: bool | None = None
 
 
+class BulkShoppingListItemCheckedPatch(BaseModel):
+    id: UUID
+    checked: bool
+    ts: int = Field(..., ge=0)
+
+
+class BulkUpdateShoppingListItemsRequest(BaseModel):
+    changes: list[BulkShoppingListItemCheckedPatch] = Field(default_factory=list)
+
+
 class ShoppingListCatalogItemResponse(BaseModel):
     name: str
     category: str | None = None
