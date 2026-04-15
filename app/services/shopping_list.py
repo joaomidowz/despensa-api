@@ -298,7 +298,8 @@ def bulk_update_shopping_list_items(
         if item is None:
             continue
 
-        client_updated_at = datetime.fromtimestamp(change.ts, UTC)
+        # Frontend sends epoch timestamps in milliseconds.
+        client_updated_at = datetime.fromtimestamp(change.ts / 1000, UTC)
         if item.updated_at > client_updated_at:
             continue
 
