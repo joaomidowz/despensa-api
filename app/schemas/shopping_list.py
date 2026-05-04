@@ -63,6 +63,7 @@ class BulkUpdateShoppingListItemsRequest(BaseModel):
 
 
 class ShoppingListCatalogItemResponse(BaseModel):
+    canonical_name: str
     name: str
     category: str | None = None
     purchase_count: int

@@ -338,31 +338,48 @@ def list_shopping_list_catalog(
     rows = db.execute(
         select(
             ReceiptItem.name,
-            func.max(ReceiptItem.category),
-            func.count(ReceiptItem.id),
-            func.max(Receipt.receipt_date),
+            ReceiptItem.category,
+            ReceiptItem.unit_price,
+            Receipt.receipt_date,
+            Product.normalized_name,
         )
         .join(Receipt, Receipt.id == ReceiptItem.receipt_id)
+        .outerjoin(Product, Product.id == ReceiptItem.product_id)
         .where(
             Receipt.household_id == current_user.household_id,
             Receipt.deleted_at.is_(None),
             ReceiptItem.item_type == ItemType.PRODUCT,
         )
-        .group_by(ReceiptItem.name)
-        .order_by(func.max(Receipt.receipt_date).desc(), func.count(ReceiptItem.id).desc())
+        .order_by(Receipt.receipt_date.desc(), Receipt.created_at.desc(), ReceiptItem.id.desc())
     ).all()
 
-    return [
-        ShoppingListCatalogItemResponse(
-            name=name,
-            category=category,
-            purchase_count=purchase_count,
-            last_purchased_at=last_purchased_at,
-            last_unit_price=_lookup_latest_unit_price(
-                db,
-                current_user.household_id,
-                normalized_name=normalize_product_name(name),
-            ),
-        )
-        for name, category, purchase_count, last_purchased_at in rows
-    ]
+    grouped: dict[str, ShoppingListCatalogItemResponse] = {}
+
+    for name, category, unit_price, receipt_date, normalized_name in rows:
+        canonical_name = normalized_name or normalize_product_name(name)
+        existing = grouped.get(canonical_name)
+
+        if existing is None:
+            grouped[canonical_name] = ShoppingListCatalogItemResponse(
+                canonical_name=canonical_name,
+                name=name,
+                category=category,
+                purchase_count=1,
+                last_purchased_at=receipt_date,
+                last_unit_price=unit_price,
+            )
+            continue
+
+        existing.purchase_count += 1
+        if category and not existing.category:
+            existing.category = category
+        if receipt_date > existing.last_purchased_at:
+            existing.last_purchased_at = receipt_date
+            existing.last_unit_price = unit_price
+            existing.name = name
+
+    return sorted(
+        grouped.values(),
+        key=lambda item: (item.last_purchased_at, item.purchase_count),
+        reverse=True,
+    )

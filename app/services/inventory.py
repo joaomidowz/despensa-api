@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+import re
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,8 +25,10 @@ from app.schemas.inventory import (
 
 
 def normalize_product_name(name: str) -> str:
-    parts = unidecode(name).lower().strip().split()
-    return " ".join(parts)
+    normalized = unidecode(name).lower().strip()
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
 
 
 def _status_for(current_qty: Decimal, min_qty: Decimal) -> InventoryStatus:
